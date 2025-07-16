@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.datasets import make_classification
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, KBinsDiscretizer
 
 # خواندن دیتاست اصلی
 try:
@@ -62,17 +62,27 @@ X_new, y_new = make_classification(
 scaler = StandardScaler()
 X_new = scaler.fit_transform(X_new)
 
-# ایجاد DataFrame برای دیتاست جدید
+# گسسته‌سازی ویژگی‌ها با روش چارکی (Quantile)
+discretizer = KBinsDiscretizer(n_bins=4, encode='ordinal', strategy='quantile')
+X_discretized = discretizer.fit_transform(X_new)
+
+# ایجاد DataFrame برای دیتاست گسسته‌شده
 columns = [f'feature_{i}' for i in range(20)]
-df_new = pd.DataFrame(X_new, columns=columns)
-df_new['shares'] = y_new
+df_discretized = pd.DataFrame(X_discretized, columns=columns)
+df_discretized['shares'] = y_new
 
-# ذخیره دیتاست جدید
-df_new.to_csv('SyntheticNewsPopularity.csv', index=False)
-print("دیتاست جدید با 10000 نمونه و 20 ویژگی در فایل 'SyntheticNewsPopularity.csv' ذخیره شد.")
+# ذخیره دیتاست گسسته‌شده
+df_discretized.to_csv('Discretized_SyntheticNewsPopularity.csv', index=False)
+print("دیتاست گسسته‌شده با روش چارکی در فایل 'Discretized_SyntheticNewsPopularity.csv' ذخیره شد.")
 
-# نمایش اطلاعات دیتاست جدید
-print("\nاطلاعات دیتاست جدید:")
-print(f"تعداد نمونه‌ها: {df_new.shape[0]}")
-print(f"تعداد ویژگی‌ها: {df_new.shape[1] - 1}")
+# نمایش اطلاعات دیتاست گسسته‌شده
+print("\nاطلاعات دیتاست گسسته‌شده:")
+print(f"تعداد نمونه‌ها: {df_discretized.shape[0]}")
+print(f"تعداد ویژگی‌ها: {df_discretized.shape[1] - 1}")
 print(f"توزیع کلاس‌ها:\n{pd.Series(y_new).value_counts()}")
+
+# نمایش نقاط برش برای هر ویژگی
+for i, feature in enumerate(columns):
+    print(f"\nویژگی {feature}:")
+    print(f"نقاط برش: {discretizer.bin_edges_[i]}")
+    print(f"تعداد بازه‌ها: {len(discretizer.bin_edges_[i]) - 1}")
