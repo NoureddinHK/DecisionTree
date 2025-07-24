@@ -39,6 +39,17 @@ else:
 X_original = df.drop(columns=[target_column])
 y_original = df[target_column]
 
+# استخراج نام ستون‌های عددی از دیتاست اصلی
+feature_columns = X_original.columns.tolist()
+
+# بررسی تعداد ستون‌های عددی
+if len(feature_columns) < 20:
+    print(f"خطا: دیتاست اصلی تنها {len(feature_columns)} ستون عددی دارد، اما 20 ستون مورد نیاز است.")
+    exit()
+
+# انتخاب 20 ستون اول برای تطبیق با دیتاست مصنوعی
+feature_columns = feature_columns[:20]
+
 # تبدیل 'shares' به یک مسئله طبقه‌بندی باینری (آستانه 1400)
 y_binary = (y_original >= 1400).astype(int)
 
@@ -66,9 +77,8 @@ X_new = scaler.fit_transform(X_new)
 discretizer = KBinsDiscretizer(n_bins=4, encode='ordinal', strategy='quantile')
 X_discretized = discretizer.fit_transform(X_new)
 
-# ایجاد DataFrame برای دیتاست گسسته‌شده
-columns = [f'feature_{i}' for i in range(20)]
-df_discretized = pd.DataFrame(X_discretized, columns=columns)
+# ایجاد DataFrame برای دیتاست گسسته‌شده با نام ستون‌های واقعی
+df_discretized = pd.DataFrame(X_discretized, columns=feature_columns)
 df_discretized['shares'] = y_new
 
 # ذخیره دیتاست گسسته‌شده
@@ -82,7 +92,7 @@ print(f"تعداد ویژگی‌ها: {df_discretized.shape[1] - 1}")
 print(f"توزیع کلاس‌ها:\n{pd.Series(y_new).value_counts()}")
 
 # نمایش نقاط برش برای هر ویژگی
-for i, feature in enumerate(columns):
+for i, feature in enumerate(feature_columns):
     print(f"\nویژگی {feature}:")
     print(f"نقاط برش: {discretizer.bin_edges_[i]}")
     print(f"تعداد بازه‌ها: {len(discretizer.bin_edges_[i]) - 1}")
