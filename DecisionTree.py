@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import make_classification
 from sklearn.preprocessing import StandardScaler, KBinsDiscretizer
+from sklearn.model_selection import train_test_split
 
 # خواندن دیتاست اصلی
 try:
@@ -81,15 +82,30 @@ X_discretized = discretizer.fit_transform(X_new)
 df_discretized = pd.DataFrame(X_discretized, columns=feature_columns)
 df_discretized['shares'] = y_new
 
-# ذخیره دیتاست گسسته‌شده
-df_discretized.to_csv('Discretized_SyntheticNewsPopularity.csv', index=False)
-print("دیتاست گسسته‌شده با روش چارکی در فایل 'Discretized_SyntheticNewsPopularity.csv' ذخیره شد.")
+# تقسیم دیتاست به آموزش (80%) و آزمایش (20%)
+train_df, test_df = train_test_split(df_discretized, test_size=0.2, random_state=42, stratify=df_discretized['shares'])
+
+# ذخیره دیتاست‌های آموزش و آزمایش
+train_df.to_csv('Train_Discretized_SyntheticNewsPopularity.csv', index=False)
+test_df.to_csv('Test_Discretized_SyntheticNewsPopularity.csv', index=False)
+print("دیتاست آموزش در فایل 'Train_Discretized_SyntheticNewsPopularity.csv' ذخیره شد.")
+print("دیتاست آزمایش در فایل 'Test_Discretized_SyntheticNewsPopularity.csv' ذخیره شد.")
 
 # نمایش اطلاعات دیتاست گسسته‌شده
-print("\nاطلاعات دیتاست گسسته‌شده:")
+print("\nاطلاعات دیتاست گسسته‌شده (کل):")
 print(f"تعداد نمونه‌ها: {df_discretized.shape[0]}")
 print(f"تعداد ویژگی‌ها: {df_discretized.shape[1] - 1}")
-print(f"توزیع کلاس‌ها:\n{pd.Series(y_new).value_counts()}")
+print(f"توزیع کلاس‌ها:\n{pd.Series(df_discretized['shares']).value_counts()}")
+
+# نمایش اطلاعات دیتاست آموزش
+print("\nاطلاعات دیتاست آموزش (80%):")
+print(f"تعداد نمونه‌ها: {train_df.shape[0]}")
+print(f"توزیع کلاس‌ها:\n{pd.Series(train_df['shares']).value_counts()}")
+
+# نمایش اطلاعات دیتاست آزمایش
+print("\nاطلاعات دیتاست آزمایش (20%):")
+print(f"تعداد نمونه‌ها: {test_df.shape[0]}")
+print(f"توزیع کلاس‌ها:\n{pd.Series(test_df['shares']).value_counts()}")
 
 # نمایش نقاط برش برای هر ویژگی
 for i, feature in enumerate(feature_columns):
