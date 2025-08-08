@@ -158,6 +158,45 @@ class NewsPopularityProcessor:
             self.df_discretized, test_size=0.2, random_state=self.random_state, stratify=self.df_discretized['shares']
         )
 
+    def perform_holdout_validation(self):
+        """Perform holdout validation for hyper-parameter tuning of n_bins."""
+        print("\nانجام اعتبارسنجی Holdout برای تنظیم تعداد بازه‌ها (n_bins):")
+        # Split training data into train_sub and validation sets (80% train_sub, 20% validation)
+        train_sub_df, val_df = train_test_split(
+            self.train_df, test_size=0.2, random_state=self.random_state, stratify=self.train_df['shares']
+        )
+        
+        # Test different n_bins values
+        n_bins_options = [3, 4, 5, 6]
+        results = []
+        
+        for n_bins in n_bins_options:
+            # Standardize and discretize training subset
+            scaler = StandardScaler()
+            train_X_sub = scaler.fit_transform(train_sub_df[self.feature_columns])
+            discretizer = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile')
+            train_X_sub_discretized = discretizer.fit_transform(train_X_sub).astype(np.int64, casting='unsafe')
+            
+            # Transform validation set using the same scaler and discretizer
+            val_X = scaler.transform(val_df[self.feature_columns])
+            val_X_discretized = discretizer.transform(val_X).astype(np.int64, casting='unsafe')
+            val_y = val_df['shares'].values.astype(np.int64, casting='unsafe')
+            
+            # Calculate average information gain for all features
+            info_gains = []
+            for i in range(len(self.feature_columns)):
+                ig = self.information_gain(val_X_discretized, val_y, i)
+                info_gains.append(ig)
+            
+            avg_info_gain = np.mean(info_gains)
+            results.append((n_bins, avg_info_gain))
+            print(f"n_bins={n_bins}, میانگین بهره اطلاعات روی مجموعه اعتبارسنجی: {avg_info_gain:.4f}")
+        
+        # Select best n_bins based on highest average information gain
+        best_n_bins, best_avg_ig = max(results, key=lambda x: x[1])
+        print(f"\nبهترین تعداد بازه‌ها: {best_n_bins} با میانگین بهره اطلاعات: {best_avg_ig:.4f}")
+        return best_n_bins
+
     def save_datasets(self):
         """Save train and test datasets with error handling."""
         def save_with_fallback(df, filename, fallback_dir='~'):
@@ -228,6 +267,7 @@ class NewsPopularityProcessor:
         self.generate_synthetic_data()
         self.standardize_and_discretize()
         self.split_data()
+        self.perform_holdout_validation()  # Add holdout validation here
         self.save_datasets()
         self.display_dataset_info()
         self.display_bin_edges()
