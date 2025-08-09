@@ -6,8 +6,20 @@ from sklearn.model_selection import train_test_split
 import os
 
 class NewsPopularityProcessor:
-    """Class to process news popularity data and calculate feature metrics."""
+    """Class to process news popularity data, calculate feature metrics, and build/visualize a decision tree."""
     
+    class Node:
+        """Class to represent a node in the decision tree."""
+        def __init__(self, feature_idx=None, split_value=None, left=None, right=None, label=None, gini=None, info_gain=None, n_samples=None):
+            self.feature_idx = feature_idx  # Index of feature to split on (None for leaf)
+            self.split_value = split_value  # Value to split on (None for leaf)
+            self.left = left  # Left child node
+            self.right = right  # Right child node
+            self.label = label  # Class label (for leaf nodes)
+            self.gini = gini  # Gini index of the node
+            self.info_gain = info_gain  # Information gain of the split (None for leaf)
+            self.n_samples = n_samples  # Number of samples at this node
+
     @staticmethod
     def entropy(y):
         """Calculate entropy of a target variable."""
@@ -52,14 +64,16 @@ class NewsPopularityProcessor:
         
         return parent_entropy - weighted_child_entropy
 
-    def __init__(self, dataset_path='OnlineNewsPopularity.csv', n_samples=10000, n_features=20, n_informative=15, n_redundant=5, random_state=42):
-        """Initialize with dataset path and synthetic data parameters."""
+    def __init__(self, dataset_path='OnlineNewsPopularity.csv', n_samples=10000, n_features=20, n_informative=15, n_redundant=5, random_state=42, max_depth=5, min_samples_split=2):
+        """Initialize with dataset path, synthetic data parameters, and decision tree parameters."""
         self.dataset_path = dataset_path
         self.n_samples = n_samples
         self.n_features = n_features
         self.n_informative = n_informative
         self.n_redundant = n_redundant
         self.random_state = random_state
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
         self.feature_columns = None
         self.target_column = None
         self.df = None
@@ -74,6 +88,7 @@ class NewsPopularityProcessor:
         self.train_df = None
         self.test_df = None
         self.discretizer = None
+        self.tree = None
 
     def load_data(self):
         """Load and preprocess the dataset."""
@@ -144,7 +159,7 @@ class NewsPopularityProcessor:
         scaler = StandardScaler()
         self.X_new = scaler.fit_transform(self.X_new)
 
-        self.discretizer = KBinsDiscretizer(n_bins=4, encode='ordinal', strategy='quantile')
+        self.discretizer = KBinsDiscretizer(n_bins=4, encode='ordinal', strategy='quantile', quantile_method='averaged_inverted_cdf')
         self.X_discretized = self.discretizer.fit_transform(self.X_new)
         self.X_discretized = self.X_discretized.astype(np.int64, casting='unsafe')
         print(f"X_discretized dtype after casting: {self.X_discretized.dtype}")
@@ -161,28 +176,23 @@ class NewsPopularityProcessor:
     def perform_holdout_validation(self):
         """Perform holdout validation for hyper-parameter tuning of n_bins."""
         print("\nانجام اعتبارسنجی Holdout برای تنظیم تعداد بازه‌ها (n_bins):")
-        # Split training data into train_sub and validation sets (80% train_sub, 20% validation)
         train_sub_df, val_df = train_test_split(
             self.train_df, test_size=0.2, random_state=self.random_state, stratify=self.train_df['shares']
         )
         
-        # Test different n_bins values
         n_bins_options = [3, 4, 5, 6]
         results = []
         
         for n_bins in n_bins_options:
-            # Standardize and discretize training subset
             scaler = StandardScaler()
             train_X_sub = scaler.fit_transform(train_sub_df[self.feature_columns])
-            discretizer = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile')
+            discretizer = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile', quantile_method='averaged_inverted_cdf')
             train_X_sub_discretized = discretizer.fit_transform(train_X_sub).astype(np.int64, casting='unsafe')
             
-            # Transform validation set using the same scaler and discretizer
             val_X = scaler.transform(val_df[self.feature_columns])
             val_X_discretized = discretizer.transform(val_X).astype(np.int64, casting='unsafe')
             val_y = val_df['shares'].values.astype(np.int64, casting='unsafe')
             
-            # Calculate average information gain for all features
             info_gains = []
             for i in range(len(self.feature_columns)):
                 ig = self.information_gain(val_X_discretized, val_y, i)
@@ -192,7 +202,6 @@ class NewsPopularityProcessor:
             results.append((n_bins, avg_info_gain))
             print(f"n_bins={n_bins}, میانگین بهره اطلاعات روی مجموعه اعتبارسنجی: {avg_info_gain:.4f}")
         
-        # Select best n_bins based on highest average information gain
         best_n_bins, best_avg_ig = max(results, key=lambda x: x[1])
         print(f"\nبهترین تعداد بازه‌ها: {best_n_bins} با میانگین بهره اطلاعات: {best_avg_ig:.4f}")
         return best_n_bins
@@ -260,22 +269,135 @@ class NewsPopularityProcessor:
             feature_ig = self.information_gain(train_X, train_y, i)
             print(f"{feature:<30} {feature_entropy:.4f} {'':<8} {feature_gini:.4f} {'':<6} {feature_ig:.4f}")
 
+    def find_best_split(self, X, y):
+        """Find the best feature and split value based on information gain."""
+        best_gain = -1
+        best_feature_idx = None
+        best_split_value = None
+        n_features = X.shape[1]
+        
+        for feature_idx in range(n_features):
+            values = np.unique(X[:, feature_idx])
+            for value in values:
+                gain = self.information_gain(X, y, feature_idx)
+                if gain > best_gain:
+                    best_gain = gain
+                    best_feature_idx = feature_idx
+                    best_split_value = value
+        
+        return best_feature_idx, best_split_value, best_gain
+
+    def build_tree(self, X, y, depth=0):
+        """Recursively build the decision tree."""
+        n_samples = len(y)
+        n_classes = len(np.unique(y))
+        gini = self.gini_index(y)  # Calculate Gini index for the node
+        
+        # Stopping criteria
+        if (depth >= self.max_depth or
+            n_samples < self.min_samples_split or
+            n_classes == 1):
+            # Create leaf node with majority class
+            label = np.bincount(y.astype(np.int64)).argmax()
+            return self.Node(label=label, gini=gini, n_samples=n_samples)
+        
+        # Find best split
+        feature_idx, split_value, gain = self.find_best_split(X, y)
+        if feature_idx is None or gain <= 0:
+            # No valid split; create leaf node
+            label = np.bincount(y.astype(np.int64)).argmax()
+            return self.Node(label=label, gini=gini, n_samples=n_samples)
+        
+        # Split data
+        left_indices = X[:, feature_idx] <= split_value
+        right_indices = ~left_indices
+        
+        if len(y[left_indices]) == 0 or len(y[right_indices]) == 0:
+            # Invalid split; create leaf node
+            label = np.bincount(y.astype(np.int64)).argmax()
+            return self.Node(label=label, gini=gini, n_samples=n_samples)
+        
+        # Recursively build left and right subtrees
+        left_child = self.build_tree(X[left_indices], y[left_indices], depth + 1)
+        right_child = self.build_tree(X[right_indices], y[right_indices], depth + 1)
+        
+        # Create decision node
+        return self.Node(feature_idx=feature_idx, split_value=split_value, left=left_child, right=right_child, gini=gini, info_gain=gain, n_samples=n_samples)
+
+    def predict_single(self, x, node):
+        """Predict class for a single sample by traversing the tree."""
+        if node.label is not None:
+            return node.label
+        
+        if x[node.feature_idx] <= node.split_value:
+            return self.predict_single(x, node.left)
+        else:
+            return self.predict_single(x, node.right)
+
+    def predict(self, X):
+        """Predict classes for all samples."""
+        return np.array([self.predict_single(x, self.tree) for x in X])
+
+    def train_decision_tree(self):
+        """Train the decision tree on the training data."""
+        print("\nآموزش درخت تصمیم:")
+        train_X = self.train_df[self.feature_columns].values.astype(np.int64, casting='unsafe')
+        train_y = self.train_df['shares'].values.astype(np.int64, casting='unsafe')
+        self.tree = self.build_tree(train_X, train_y)
+        print("درخت تصمیم با موفقیت آموزش دید.")
+
+    def evaluate_tree(self):
+        """Evaluate the decision tree on the test data."""
+        print("\nارزیابی درخت تصمیم:")
+        test_X = self.test_df[self.feature_columns].values.astype(np.int64, casting='unsafe')
+        test_y = self.test_df['shares'].values.astype(np.int64, casting='unsafe')
+        predictions = self.predict(test_X)
+        accuracy = np.mean(predictions == test_y)
+        print(f"دقت درخت تصمیم روی مجموعه آزمایش: {accuracy:.4f}")
+
+    def visualize_tree(self):
+        """Print an enhanced text-based representation of the decision tree."""
+        def print_node(node, depth=0, prefix="", is_last=True):
+            """Recursively print the tree with enhanced formatting."""
+            indent = "|  " * (depth - 1) + ("|-- " if depth > 0 else "")
+            if is_last and depth > 0:
+                indent = "|  " * (depth - 1) + "`-- "
+            
+            if node.label is not None:
+                # Leaf node
+                node_info = f"[Class: {node.label}, Gini: {node.gini:.4f}, Samples: {node.n_samples}]"
+            else:
+                # Decision node
+                feature_name = self.feature_columns[node.feature_idx]
+                node_info = f"[Feature: {feature_name}, IG: {node.info_gain:.4f}, Gini: {node.gini:.4f}, Samples: {node.n_samples}]"
+            
+            print(f"{indent}{node_info}")
+            
+            # Print children
+            if node.left is not None:
+                print_node(node.left, depth + 1, f"<= {node.split_value}", False)
+            if node.right is not None:
+                print_node(node.right, depth + 1, f"> {node.split_value}", True)
+
+        print("\nنمایش متنی درخت تصمیم:")
+        print_node(self.tree)
+
     def run(self):
-        """Execute all processing steps."""
+        """Execute all processing steps, train/evaluate decision tree, and visualize it."""
         self.load_data()
         self.preprocess_data()
         self.generate_synthetic_data()
         self.standardize_and_discretize()
         self.split_data()
-        self.perform_holdout_validation()  # Add holdout validation here
+        self.perform_holdout_validation()
         self.save_datasets()
         self.display_dataset_info()
         self.display_bin_edges()
         self.calculate_metrics()
+        self.train_decision_tree()
+        self.evaluate_tree()
+        self.visualize_tree()
 
 if __name__ == "__main__":
     processor = NewsPopularityProcessor()
     processor.run()
-
-
-    ######## Samples shuffle in dataset doesn't affect the results ########
