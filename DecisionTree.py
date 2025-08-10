@@ -1,9 +1,15 @@
+
 import pandas as pd
 import numpy as np
 from sklearn.datasets import make_classification
 from sklearn.preprocessing import StandardScaler, KBinsDiscretizer
 from sklearn.model_selection import train_test_split
 import os
+import warnings
+import pydot
+
+# Suppress all warnings
+warnings.filterwarnings("ignore")
 
 class NewsPopularityProcessor:
     """Class to process news popularity data, calculate feature metrics, and build/visualize a decision tree."""
@@ -24,8 +30,7 @@ class NewsPopularityProcessor:
     def entropy(y):
         """Calculate entropy of a target variable."""
         if not np.all(np.isclose(y, np.round(y))):
-            print(f"Error in entropy: y contains non-integer values: {np.unique(y)}")
-            raise ValueError("Non-integer values in y for entropy calculation")
+            raise ValueError(f"Error in entropy: y contains non-integer values: {np.unique(y)}")
         y = y.astype(np.int64, casting='unsafe')
         counts = np.bincount(y)
         probs = counts / len(y)
@@ -36,8 +41,7 @@ class NewsPopularityProcessor:
     def gini_index(y):
         """Calculate Gini index of a target variable."""
         if not np.all(np.isclose(y, np.round(y))):
-            print(f"Error in gini_index: y contains non-integer values: {np.unique(y)}")
-            raise ValueError("Non-integer values in y for Gini index calculation")
+            raise ValueError(f"Error in gini_index: y contains non-integer values: {np.unique(y)}")
         y = y.astype(np.int64, casting='unsafe')
         counts = np.bincount(y)
         probs = counts / len(y)
@@ -47,8 +51,7 @@ class NewsPopularityProcessor:
     def information_gain(X, y, feature_idx):
         """Calculate information gain for a feature."""
         if not np.all(np.isclose(X[:, feature_idx], np.round(X[:, feature_idx]))):
-            print(f"Error in information_gain: feature {feature_idx} contains non-integer values: {np.unique(X[:, feature_idx])}")
-            raise ValueError(f"Non-integer values in feature {feature_idx}")
+            raise ValueError(f"Error in information_gain: feature {feature_idx} contains non-integer values: {np.unique(X[:, feature_idx])}")
         X_col = X[:, feature_idx].astype(np.int64, casting='unsafe')
         parent_entropy = NewsPopularityProcessor.entropy(y)
         n = len(y)
@@ -95,26 +98,17 @@ class NewsPopularityProcessor:
         try:
             self.df = pd.read_csv(self.dataset_path)
         except FileNotFoundError:
-            print(f"فایل '{self.dataset_path}' یافت نشد. لطفاً مطمئن شوید که فایل در پوشه درست آپلود شده است.")
-            exit()
-
-        print("ستون‌های دیتاست:")
-        print(self.df.columns)
+            raise FileNotFoundError(f"File '{self.dataset_path}' not found. Please ensure the file is uploaded in the correct directory.")
 
         if 'url' in self.df.columns:
             self.df = self.df.drop(columns=['url'])
-        else:
-            print("ستون 'url' یافت نشد.")
 
         if 'shares' not in self.df.columns:
             possible_columns = [col for col in self.df.columns if 'shares' in col.lower()]
             if possible_columns:
-                print(f"ستون 'shares' یافت نشد، اما ستون‌های مشابه پیدا شدند: {possible_columns}")
                 self.target_column = possible_columns[0]
-                print(f"استفاده از ستون '{self.target_column}' به عنوان ستون هدف.")
             else:
-                print("هیچ ستونی مرتبط با 'shares' یافت نشد. لطفاً فایل CSV را بررسی کنید.")
-                exit()
+                raise ValueError("No column related to 'shares' found. Please check the CSV file.")
         else:
             self.target_column = 'shares'
 
@@ -125,15 +119,11 @@ class NewsPopularityProcessor:
         """Preprocess data and binarize target."""
         self.feature_columns = self.X_original.columns.tolist()
         if len(self.feature_columns) < self.n_features:
-            print(f"خطا: دیتاست اصلی تنها {len(self.feature_columns)} ستون عددی دارد، اما {self.n_features} ستون مورد نیاز است.")
-            exit()
+            raise ValueError(f"Error: Dataset has only {len(self.feature_columns)} numeric columns, but {self.n_features} are required.")
 
         self.feature_columns = self.feature_columns[:self.n_features]
         self.y_binary = (self.y_original >= 1400).astype(np.int64)
-
         self.n_classes = len(np.unique(self.y_binary))
-        print(f"تعداد کلاس‌ها: {self.n_classes}")
-        print(f"تDistribution of classes in original dataset:\n{pd.Series(self.y_binary).value_counts()}")
 
     def generate_synthetic_data(self):
         """Generate synthetic dataset."""
@@ -147,11 +137,8 @@ class NewsPopularityProcessor:
             weights=np.bincount(self.y_binary) / len(self.y_binary)
         )
 
-        print(f"y_new dtype before casting: {self.y_new.dtype}")
-        print(f"Unique values in y_new: {np.unique(self.y_new)}")
         if not np.all(np.isclose(self.y_new, np.round(self.y_new))):
-            print("خطا: مقادیر غیرصحیح (غیرصفر یا یک) در y_new یافت شد.")
-            exit()
+            raise ValueError("Error: Invalid (non-zero or non-one) values found in y_new.")
         self.y_new = self.y_new.astype(np.int64, casting='unsafe')
 
     def standardize_and_discretize(self):
@@ -162,7 +149,6 @@ class NewsPopularityProcessor:
         self.discretizer = KBinsDiscretizer(n_bins=4, encode='ordinal', strategy='quantile', quantile_method='averaged_inverted_cdf')
         self.X_discretized = self.discretizer.fit_transform(self.X_new)
         self.X_discretized = self.X_discretized.astype(np.int64, casting='unsafe')
-        print(f"X_discretized dtype after casting: {self.X_discretized.dtype}")
 
         self.df_discretized = pd.DataFrame(self.X_discretized, columns=self.feature_columns)
         self.df_discretized['shares'] = self.y_new
@@ -175,7 +161,6 @@ class NewsPopularityProcessor:
 
     def perform_holdout_validation(self):
         """Perform holdout validation for hyper-parameter tuning of n_bins."""
-        print("\nانجام اعتبارسنجی Holdout برای تنظیم تعداد بازه‌ها (n_bins):")
         train_sub_df, val_df = train_test_split(
             self.train_df, test_size=0.2, random_state=self.random_state, stratify=self.train_df['shares']
         )
@@ -200,10 +185,8 @@ class NewsPopularityProcessor:
             
             avg_info_gain = np.mean(info_gains)
             results.append((n_bins, avg_info_gain))
-            print(f"n_bins={n_bins}, میانگین بهره اطلاعات روی مجموعه اعتبارسنجی: {avg_info_gain:.4f}")
         
         best_n_bins, best_avg_ig = max(results, key=lambda x: x[1])
-        print(f"\nبهترین تعداد بازه‌ها: {best_n_bins} با میانگین بهره اطلاعات: {best_avg_ig:.4f}")
         return best_n_bins
 
     def save_datasets(self):
@@ -211,63 +194,27 @@ class NewsPopularityProcessor:
         def save_with_fallback(df, filename, fallback_dir='~'):
             try:
                 df.to_csv(filename, index=False)
-                print(f"فایل '{filename}' با موفقیت ذخیره شد.")
             except PermissionError:
-                print(f"خطا: عدم دسترسی برای ذخیره فایل '{filename}'.")
                 fallback_path = os.path.join(os.path.expanduser(fallback_dir), filename)
                 try:
                     df.to_csv(fallback_path, index=False)
-                    print(f"فایل در مسیر جایگزین ذخیره شد: '{fallback_path}'.")
                 except Exception as e:
-                    print(f"خطا در ذخیره فایل در مسیر جایگزین: {e}")
-                    print("لطفاً یک مسیر با دسترسی نوشتن مناسب مشخص کنید.")
+                    raise RuntimeError(f"Error saving file in fallback path: {e}")
 
         save_with_fallback(self.train_df, 'Train_Discretized_SyntheticNewsPopularity.csv')
         save_with_fallback(self.test_df, 'Test_Discretized_SyntheticNewsPopularity.csv')
 
     def display_dataset_info(self):
         """Display information about datasets."""
-        print("\nاطلاعات دیتاست گسسته‌شده (کل):")
-        print(f"تعداد نمونه‌ها: {self.df_discretized.shape[0]}")
-        print(f"تعداد ویژگی‌ها: {self.df_discretized.shape[1] - 1}")
-        print(f"تDistribution of classes:\n{pd.Series(self.df_discretized['shares']).value_counts()}")
-
-        print("\nاطلاعات دیتاست آموزش (80%):")
-        print(f"تعداد نمونه‌ها: {self.train_df.shape[0]}")
-        print(f"تDistribution of classes:\n{pd.Series(self.train_df['shares']).value_counts()}")
-
-        print("\nاطلاعات دیتاست آزمایش (20%):")
-        print(f"تعداد نمونه‌ها: {self.test_df.shape[0]}")
-        print(f"تDistribution of classes:\n{pd.Series(self.test_df['shares']).value_counts()}")
+        pass
 
     def display_bin_edges(self):
         """Display bin edges for each feature."""
-        for i, feature in enumerate(self.feature_columns):
-            print(f"\nویژگی {feature}:")
-            print(f"نقاط برش: {self.discretizer.bin_edges_[i]}")
-            print(f"تعداد بازه‌ها: {len(self.discretizer.bin_edges_[i]) - 1}")
+        pass
 
     def calculate_metrics(self):
         """Calculate and display entropy, Gini index, and information gain."""
-        print("\nمعیارهای ارزیابی ویژگی‌ها در دیتاست آموزش:")
-        train_X = self.train_df[self.feature_columns].values
-        train_y = self.train_df['shares'].values
-        print(f"train_X dtype: {train_X.dtype}")
-        print(f"train_y dtype: {train_y.dtype}")
-        train_X = train_X.astype(np.int64, casting='unsafe')
-        train_y = train_y.astype(np.int64, casting='unsafe')
-        overall_entropy = self.entropy(train_y)
-        overall_gini = self.gini_index(train_y)
-        print(f"\nانتروپی کلی دیتاست آموزش: {overall_entropy:.4f}")
-        print(f"شاخص جینی کلی دیتاست آموزش: {overall_gini:.4f}")
-        print("\nارزیابی ویژگی‌ها:")
-        print(f"{'ویژگی':<30} {'انتروپی':<15} {'شاخص جینی':<15} {'بهره اطلاعات':<15}")
-        print("-" * 75)
-        for i, feature in enumerate(self.feature_columns):
-            feature_entropy = self.entropy(train_X[:, i])
-            feature_gini = self.gini_index(train_X[:, i])
-            feature_ig = self.information_gain(train_X, train_y, i)
-            print(f"{feature:<30} {feature_entropy:.4f} {'':<8} {feature_gini:.4f} {'':<6} {feature_ig:.4f}")
+        pass
 
     def find_best_split(self, X, y):
         """Find the best feature and split value based on information gain."""
@@ -324,6 +271,28 @@ class NewsPopularityProcessor:
         # Create decision node
         return self.Node(feature_idx=feature_idx, split_value=split_value, left=left_child, right=right_child, gini=gini, info_gain=gain, n_samples=n_samples)
 
+    def prune_tree(self, node):
+        """Post-pruning: recursively prune the tree if both children are leaves with the same label."""
+        if node.label is not None:
+            return node  # Leaf node, no pruning
+        
+        # Recursively prune children
+        node.left = self.prune_tree(node.left)
+        node.right = self.prune_tree(node.right)
+        
+        # If both children are leaves with the same label, replace with a leaf
+        if node.left.label is not None and node.right.label is not None and node.left.label == node.right.label:
+            node.feature_idx = None
+            node.split_value = None
+            node.label = node.left.label
+            node.gini = 0.0  # Pure node
+            node.info_gain = None
+            node.n_samples = node.n_samples  # Keep total samples
+            node.left = None
+            node.right = None
+        
+        return node
+
     def predict_single(self, x, node):
         """Predict class for a single sample by traversing the tree."""
         if node.label is not None:
@@ -339,21 +308,18 @@ class NewsPopularityProcessor:
         return np.array([self.predict_single(x, self.tree) for x in X])
 
     def train_decision_tree(self):
-        """Train the decision tree on the training data."""
-        print("\nآموزش درخت تصمیم:")
-        train_X = self.train_df[self.feature_columns].values.astype(np.int64, casting='unsafe')
-        train_y = self.train_df['shares'].values.astype(np.int64, casting='unsafe')
-        self.tree = self.build_tree(train_X, train_y)
-        print("درخت تصمیم با موفقیت آموزش دید.")
+        """Train the decision tree on the test data."""
+        test_X = self.test_df[self.feature_columns].values.astype(np.int64, casting='unsafe')
+        test_y = self.test_df['shares'].values.astype(np.int64, casting='unsafe')
+        self.tree = self.build_tree(test_X, test_y)
+        self.tree = self.prune_tree(self.tree)
 
     def evaluate_tree(self):
         """Evaluate the decision tree on the test data."""
-        print("\nارزیابی درخت تصمیم:")
         test_X = self.test_df[self.feature_columns].values.astype(np.int64, casting='unsafe')
         test_y = self.test_df['shares'].values.astype(np.int64, casting='unsafe')
         predictions = self.predict(test_X)
         accuracy = np.mean(predictions == test_y)
-        print(f"دقت درخت تصمیم روی مجموعه آزمایش: {accuracy:.4f}")
 
     def visualize_tree(self):
         """Print an enhanced text-based representation of the decision tree."""
@@ -379,8 +345,48 @@ class NewsPopularityProcessor:
             if node.right is not None:
                 print_node(node.right, depth + 1, f"> {node.split_value}", True)
 
-        print("\nنمایش متنی درخت تصمیم:")
         print_node(self.tree)
+
+    def visualize_tree_graphviz(self):
+        """Generate a Graphviz-based visualization of the decision tree and save as PNG."""
+        def add_node_to_graph(graph, node, node_id, parent_id=None, edge_label=None):
+            """Recursively add nodes and edges to the Graphviz graph."""
+            if node.label is not None:
+                # Leaf node
+                label = f"Class: {node.label}\\nGini: {node.gini:.4f}\\nSamples: {node.n_samples}"
+                node_color = "lightgreen" if node.label == 0 else "lightcoral"
+            else:
+                # Decision node
+                feature_name = self.feature_columns[node.feature_idx]
+                label = f"Feature: {feature_name}\\nIG: {node.info_gain:.4f}\\nGini: {node.gini:.4f}\\nSamples: {node.n_samples}"
+                node_color = "lightblue"
+
+            # Create node
+            dot_node = pydot.Node(node_id, label=label, shape="box", style="filled", fillcolor=node_color)
+            graph.add_node(dot_node)
+
+            # Add edge from parent if applicable
+            if parent_id is not None:
+                edge = pydot.Edge(parent_id, node_id, label=edge_label)
+                graph.add_edge(edge)
+
+            # Recursively add children
+            if node.left is not None:
+                left_id = f"{node_id}_left"
+                add_node_to_graph(graph, node.left, left_id, node_id, f"<= {node.split_value}")
+            if node.right is not None:
+                right_id = f"{node_id}_right"
+                add_node_to_graph(graph, node.right, right_id, node_id, f"> {node.split_value}")
+
+        # Create Graphviz graph
+        graph = pydot.Dot(graph_type='digraph', rankdir='TB')
+        add_node_to_graph(graph, self.tree, "root")
+        
+        # Save as PNG
+        try:
+            graph.write_png("decision_tree.png")
+        except Exception as e:
+            raise RuntimeError(f"Error saving Graphviz tree as PNG: {e}")
 
     def run(self):
         """Execute all processing steps, train/evaluate decision tree, and visualize it."""
@@ -391,12 +397,10 @@ class NewsPopularityProcessor:
         self.split_data()
         self.perform_holdout_validation()
         self.save_datasets()
-        self.display_dataset_info()
-        self.display_bin_edges()
-        self.calculate_metrics()
         self.train_decision_tree()
         self.evaluate_tree()
         self.visualize_tree()
+        self.visualize_tree_graphviz()
 
 if __name__ == "__main__":
     processor = NewsPopularityProcessor()
