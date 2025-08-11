@@ -1,5 +1,7 @@
 ```markdown
 
+_This project is about the popularity of news articles with different features_
+
 ## Requirements
 1. **Python**: Version 3.7 or higher.
    Run this: python --version
