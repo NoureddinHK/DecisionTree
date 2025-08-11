@@ -1,35 +1,35 @@
-import pandas as pd  # وارد کردن کتابخانه پانداس برای کار با داده‌های جدولی
-import numpy as np  # وارد کردن کتابخانه نامپای برای عملیات ریاضی و آرایه‌ها
-from sklearn.datasets import make_classification  # وارد کردن تابع برای تولید داده‌های مصنوعی طبقه‌بندی
-from sklearn.preprocessing import StandardScaler, KBinsDiscretizer  # وارد کردن ابزارهای استانداردسازی و گسسته‌سازی داده‌ها
-from sklearn.model_selection import train_test_split  # وارد کردن تابع برای تقسیم داده‌ها به آموزش و آزمایش
-import os  # وارد کردن کتابخانه برای عملیات سیستم فایل مانند ذخیره فایل
-import warnings  # وارد کردن کتابخانه برای مدیریت هشدارهای برنامه
-import pydot  # وارد کردن کتابخانه برای ایجاد گراف‌های گرافویز
+import pandas as pd  # برای کار با دیتافریم
+import numpy as np  # برای محاسبات ریاضی و آرایه ها
+from sklearn.datasets import make_classification  # تولید داده مصنوعی
+from sklearn.preprocessing import StandardScaler, KBinsDiscretizer  # برای استانداردسازی و گسسته‌سازی داده‌ها
+from sklearn.model_selection import train_test_split  # برای تقسیم داده‌ها به آموزش و آزمایش
+import os  # برای ذخیره فایل
+import warnings  # warning handling
+import pydot  # making graphviz graphs
 
-# Suppress all warnings
-warnings.filterwarnings("ignore")  # نادیده گرفتن تمام هشدارها برای جلوگیری از خروجی اضافی
 
-class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردازش داده‌های محبوبیت اخبار
-    """Class to process news popularity data, calculate feature metrics, and build/visualize a decision tree."""  # توضیح مستند برای کلاس
+warnings.filterwarnings("ignore")  # to not print warnings in the output
+
+class NewsPopularityProcessor:  # main class
+    """Class to process news popularity data, calculate feature metrics, and build/visualize a decision tree."""
     
-    class Node:  # تعریف کلاس داخلی برای گره‌های درخت تصمیم
-        """Class to represent a node in the decision tree."""  # توضیح مستند برای کلاس گره
+    class Node:  # decision tree node class
+        """Class to represent a node in the decision tree."""
         def __init__(self, feature_idx=None, split_value=None, left=None, right=None, label=None, gini=None, info_gain=None, n_samples=None):  # سازنده کلاس گره با پارامترهای پیش‌فرض
-            self.feature_idx = feature_idx  # شاخص ویژگی برای تقسیم (None برای گره‌های برگ)
-            self.split_value = split_value  # مقدار آستانه برای تقسیم (None برای گره‌های برگ)
-            self.left = left  # اشاره‌گر به گره فرزند چپ
-            self.right = right  # اشاره‌گر به گره فرزند راست
-            self.label = label  # برچسب کلاس برای گره‌های برگ
-            self.gini = gini  # شاخص جینی برای گره
-            self.info_gain = info_gain  # بهره اطلاعات برای تقسیم (None برای گره‌های برگ)
-            self.n_samples = n_samples  # تعداد نمونه‌های موجود در این گره
+            self.feature_idx = feature_idx  # feature to split on
+            self.split_value = split_value  # value threshold for splitting
+            self.left = left  # فرزند چپ گره
+            self.right = right  # فرزند راست گره
+            self.label = label  # این کلاس نود هایی است که گره نیستند بلکع بلکه برگ هستند
+            self.gini = gini  # Gini index for the node
+            self.info_gain = info_gain  # information gain for the split (None for leaf nodes)
+            self.n_samples = n_samples  # number of samples in the current node
 
     @staticmethod
-    def entropy(y):  # تعریف متد استاتیک برای محاسبه آنتروپی
-        """Calculate entropy of a target variable."""  # توضیح مستند برای متد
+    def entropy(y):
+        """Calculate entropy of a target variable."""
         if not np.all(np.isclose(y, np.round(y))):  # بررسی اینکه آیا تمام مقادیر y اعداد صحیح هستند
-            raise ValueError(f"Error in entropy: y contains non-integer values: {np.unique(y)}")  # پرتاب خطا در صورت وجود مقادیر غیرصحیح
+            raise ValueError(f"Error in entropy: y contains non-integer values: {np.unique(y)}")  #  خطا در صورت وجود مقادیر غیرصحیح
         y = y.astype(np.int64, casting='unsafe')  # تبدیل مقادیر y به نوع integer 64-bit
         counts = np.bincount(y)  # شمارش تعداد نمونه‌ها در هر کلاس
         probs = counts / len(y)  # محاسبه احتمال هر کلاس
@@ -37,8 +37,8 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         return -np.sum(probs * np.log2(probs))  # محاسبه و بازگشت مقدار آنتروپی
 
     @staticmethod
-    def gini_index(y):  # تعریف متد استاتیک برای محاسبه شاخص جینی
-        """Calculate Gini index of a target variable."""  # توضیح مستند برای متد
+    def gini_index(y):
+        """Calculate Gini index of a target variable."""
         if not np.all(np.isclose(y, np.round(y))):  # بررسی مقادیر صحیح در y
             raise ValueError(f"Error in gini_index: y contains non-integer values: {np.unique(y)}")  # پرتاب خطا در صورت مقادیر غیرصحیح
         y = y.astype(np.int64, casting='unsafe')  # تبدیل y به نوع integer 64-bit
@@ -47,8 +47,8 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         return 1 - np.sum(probs ** 2)  # محاسبه و بازگشت شاخص جینی
 
     @staticmethod
-    def information_gain(X, y, feature_idx):  # تعریف متد استاتیک برای محاسبه بهره اطلاعات
-        """Calculate information gain for a feature."""  # توضیح مستند برای متد
+    def information_gain(X, y, feature_idx):  # تعریف متد استاتیک برای محاسبه info-gain
+        """Calculate information gain for a feature."""
         if not np.all(np.isclose(X[:, feature_idx], np.round(X[:, feature_idx]))):  # بررسی مقادیر صحیح در ستون ویژگی
             raise ValueError(f"Error in information_gain: feature {feature_idx} contains non-integer values: {np.unique(X[:, feature_idx])}")  # پرتاب خطا در صورت مقادیر غیرصحیح
         X_col = X[:, feature_idx].astype(np.int64, casting='unsafe')  # تبدیل ستون ویژگی به نوع integer
@@ -67,7 +67,7 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         return parent_entropy - weighted_child_entropy  # بازگشت بهره اطلاعات (آنتروپی والد منهای آنتروپی وزنی)
 
     def __init__(self, dataset_path='OnlineNewsPopularity.csv', n_samples=10000, n_features=20, n_informative=15, n_redundant=5, random_state=42, max_depth=5, min_samples_split=2):  # سازنده کلاس اصلی
-        """Initialize with dataset path, synthetic data parameters, and decision tree parameters."""  # توضیح مستند برای سازنده
+        """Initialize with dataset path, synthetic data parameters, and decision tree parameters."""
         self.dataset_path = dataset_path  # ذخیره مسیر فایل دیتاست
         self.n_samples = n_samples  # تعداد نمونه‌های مصنوعی برای تولید
         self.n_features = n_features  # تعداد ویژگی‌های مورد نیاز
@@ -89,15 +89,15 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         self.df_discretized = None  # دیتافریم داده‌های گسسته‌شده
         self.train_df = None  # دیتافریم مجموعه آموزش
         self.test_df = None  # دیتافریم مجموعه آزمایش
-        self.discretizer = None  # شیء گسسته‌سازی
+        self.discretizer = None  # شی گسسته‌سازی
         self.tree = None  # درخت تصمیم ساخته‌شده
 
     def load_data(self):  # متد برای بارگذاری و پیش‌پردازش دیتاست
-        """Load and preprocess the dataset."""  # توضیح مستند برای متد
-        try:  # شروع بلوک مدیریت خطا
+        """Load and preprocess the dataset."""
+        try:  # error handling block
             self.df = pd.read_csv(self.dataset_path)  # خواندن فایل CSV به دیتافریم
         except FileNotFoundError:  # در صورت عدم وجود فایل
-            raise FileNotFoundError(f"File '{self.dataset_path}' not found. Please ensure the file is uploaded in the correct directory.")  # پرتاب خطا با پیام مناسب
+            raise FileNotFoundError(f"File '{self.dataset_path}' not found. Please ensure the file is uploaded in the correct directory.")  # خطا اگر فایل در محل درست نبود
 
         if 'url' in self.df.columns:  # بررسی وجود ستون 'url'
             self.df = self.df.drop(columns=['url'])  # حذف ستون 'url' اگر وجود داشته باشد
@@ -115,7 +115,7 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         self.y_original = self.df[self.target_column]  # استخراج مقادیر هدف
 
     def preprocess_data(self):  # متد برای پیش‌پردازش داده‌ها
-        """Preprocess data and binarize target."""  # توضیح مستند برای متد
+        """Preprocess data and binarize target."""
         self.feature_columns = self.X_original.columns.tolist()  # ذخیره لیست نام ستون‌های ویژگی
         if len(self.feature_columns) < self.n_features:  # بررسی تعداد کافی ستون‌های ویژگی
             raise ValueError(f"Error: Dataset has only {len(self.feature_columns)} numeric columns, but {self.n_features} are required.")  # پرتاب خطا در صورت کمبود ستون
@@ -125,14 +125,14 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         self.n_classes = len(np.unique(self.y_binary))  # محاسبه تعداد کلاس‌های منحصر به فرد
 
     def generate_synthetic_data(self):  # متد برای تولید داده‌های مصنوعی
-        """Generate synthetic dataset."""  # توضیح مستند برای متد
+        """Generate synthetic dataset."""
         self.X_new, self.y_new = make_classification(  # تولید داده‌های مصنوعی با استفاده از make_classification
             n_samples=self.n_samples,  # تعداد نمونه‌ها
             n_features=self.n_features,  # تعداد ویژگی‌ها
             n_informative=self.n_informative,  # تعداد ویژگی‌های اطلاع‌رسان
             n_redundant=self.n_redundant,  # تعداد ویژگی‌های اضافی
             n_classes=self.n_classes,  # تعداد کلاس‌ها
-            random_state=self.random_state,  # بذر تصادفی
+            random_state=self.random_state,  # استیت تصادفی برای تکرارپذیری
             weights=np.bincount(self.y_binary) / len(self.y_binary)  # وزن کلاس‌ها بر اساس توزیع اصلی
         )
 
@@ -141,8 +141,8 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         self.y_new = self.y_new.astype(np.int64, casting='unsafe')  # تبدیل y_new به نوع integer
 
     def standardize_and_discretize(self):  # متد برای استانداردسازی و گسسته‌سازی ویژگی‌ها
-        """Standardize and discretize features."""  # توضیح مستند برای متد
-        scaler = StandardScaler()  # ایجاد شیء استانداردساز
+        """Standardize and discretize features."""
+        scaler = StandardScaler()  # ایجاد شی استانداردساز
         self.X_new = scaler.fit_transform(self.X_new)  # استانداردسازی داده‌های مصنوعی
 
         self.discretizer = KBinsDiscretizer(n_bins=4, encode='ordinal', strategy='quantile', quantile_method='averaged_inverted_cdf')  # ایجاد شیء گسسته‌سازی با 4 بین
@@ -153,7 +153,7 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         self.df_discretized['shares'] = self.y_new  # اضافه کردن ستون هدف به دیتافریم
 
     def split_data(self):  # متد برای تقسیم داده‌ها به آموزش و آزمایش
-        """Split dataset into train and test sets."""  # توضیح مستند برای متد
+        """Split dataset into train and test sets."""
         self.train_df, self.test_df = train_test_split(  # تقسیم داده‌ها به دو مجموعه
             self.df_discretized, test_size=0.2, random_state=self.random_state, stratify=self.df_discretized['shares']  # 20% آزمایش، با حفظ توزیع کلاس‌ها
         )
@@ -189,34 +189,34 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         return best_n_bins  # بازگشت بهترین تعداد بین
 
     def save_datasets(self):  # متد برای ذخیره مجموعه‌های داده
-        """Save train and test datasets with error handling."""  # توضیح مستند برای متد
+        """Save train and test datasets with error handling."""
         def save_with_fallback(df, filename, fallback_dir='~'):  # تابع داخلی برای ذخیره با مسیر جایگزین
-            try:  # شروع بلوک مدیریت خطا
+            try:  # error handling block
                 df.to_csv(filename, index=False)  # ذخیره دیتافریم به CSV
             except PermissionError:  # در صورت خطای دسترسی
                 fallback_path = os.path.join(os.path.expanduser(fallback_dir), filename)  # ایجاد مسیر جایگزین
                 try:  # تلاش برای ذخیره در مسیر جایگزین
                     df.to_csv(fallback_path, index=False)  # ذخیره در مسیر جایگزین
                 except Exception as e:  # در صورت خطای دیگر
-                    raise RuntimeError(f"Error saving file in fallback path: {e}")  # پرتاب خطا
+                    raise RuntimeError(f"Error saving file in fallback path: {e}")
 
         save_with_fallback(self.train_df, 'Train_Discretized_SyntheticNewsPopularity.csv')  # ذخیره مجموعه آموزش
         save_with_fallback(self.test_df, 'Test_Discretized_SyntheticNewsPopularity.csv')  # ذخیره مجموعه آزمایش
 
     def display_dataset_info(self):  # متد برای نمایش اطلاعات مجموعه داده
-        """Display information about datasets."""  # توضیح مستند برای متد
+        """Display information about datasets."""  # 
         pass  # خالی، چون خروجی غیرضروری حذف شده است
 
     def display_bin_edges(self):  # متد برای نمایش حدود بین‌ها
-        """Display bin edges for each feature."""  # توضیح مستند برای متد
+        """Display bin edges for each feature."""
         pass  # خالی، چون خروجی غیرضروری حذف شده است
 
     def calculate_metrics(self):  # متد برای محاسبه معیارها
-        """Calculate and display entropy, Gini index, and information gain."""  # توضیح مستند برای متد
+        """Calculate and display entropy, Gini index, and information gain."""
         pass  # خالی، چون خروجی غیرضروری حذف شده است
 
     def find_best_split(self, X, y):  # متد برای یافتن بهترین تقسیم
-        """Find the best feature and split value based on information gain."""  # توضیح مستند برای متد
+        """Find the best feature and split value based on information gain."""
         best_gain = -1  # مقدار اولیه برای بهترین بهره اطلاعات
         best_feature_idx = None  # شاخص بهترین ویژگی
         best_split_value = None  # بهترین مقدار تقسیم
@@ -234,7 +234,7 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         return best_feature_idx, best_split_value, best_gain  # بازگشت بهترین مقادیر
 
     def build_tree(self, X, y, depth=0):  # متد برای ساخت درخت تصمیم به صورت بازگشتی
-        """Recursively build the decision tree."""  # توضیح مستند برای متد
+        """Build the decision tree recursively."""
         n_samples = len(y)  # تعداد نمونه‌ها
         n_classes = len(np.unique(y))  # تعداد کلاس‌های منحصر به فرد
         gini = self.gini_index(y)  # محاسبه شاخص جینی برای گره
@@ -270,8 +270,10 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         # Create decision node
         return self.Node(feature_idx=feature_idx, split_value=split_value, left=left_child, right=right_child, gini=gini, info_gain=gain, n_samples=n_samples)  # بازگشت گره تصمیم
 
-    def prune_tree(self, node):  # متد برای هرس کردن درخت پس از ساخت
-        """Post-pruning: recursively prune the tree if both children are leaves with the same label."""  # توضیح مستند برای متد
+############### خسته شودم
+
+    def prune_tree(self, node):  # پس هرس
+        """Post-pruning: recursively prune the tree if both children are leaves with the same label."""
         if node.label is not None:  # اگر گره برگ است
             return node  # بازگشت گره بدون تغییر
         
@@ -280,7 +282,7 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         node.right = self.prune_tree(node.right)  # هرس بازگشتی فرزند راست
         
         # If both children are leaves with the same label, replace with a leaf
-        if node.left.label is not None and node.right.label is not None and node.left.label == node.right.label:  # اگر هر دو فرزند برگ با برچسب یکسان باشند
+        if node.left.label is not None and node.right.label is not None and node.left.label == node.right.label:  # if both children are leaves with the same label
             node.feature_idx = None  # حذف شاخص ویژگی
             node.split_value = None  # حذف مقدار تقسیم
             node.label = node.left.label  # تنظیم برچسب به برچسب فرزند
@@ -290,16 +292,16 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
             node.left = None  # حذف فرزند چپ
             node.right = None  # حذف فرزند راست
         
-        return node  # بازگشت گره هرس‌شده
+        return node  # return pruned node
 
     def predict_single(self, x, node):  # متد برای پیش‌بینی یک نمونه
-        """Predict class for a single sample by traversing the tree."""  # توضیح مستند برای متد
+        """Predict class for a single sample by traversing the tree."""
         if node.label is not None:  # اگر گره برگ است
-            return node.label  # بازگشت برچسب کلاس
+            return node.label  # return class label
         
         if x[node.feature_idx] <= node.split_value:  # اگر مقدار ویژگی کمتر یا برابر آستانه باشد
             return self.predict_single(x, node.left)  # پیش‌بینی با فرزند چپ
-        else:  # در غیر این صورت
+        else:
             return self.predict_single(x, node.right)  # پیش‌بینی با فرزند راست
 
     def predict(self, X):  # متد برای پیش‌بینی مجموعه نمونه‌ها
@@ -307,25 +309,25 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         return np.array([self.predict_single(x, self.tree) for x in X])  # پیش‌بینی برای هر نمونه و تبدیل به آرایه
 
     def train_decision_tree(self):  # متد برای آموزش درخت تصمیم
-        """Train the decision tree on the test data."""  # توضیح مستند برای متد
+        """Train the decision tree on the test data."""
         test_X = self.test_df[self.feature_columns].values.astype(np.int64, casting='unsafe')  # استخراج ویژگی‌های مجموعه آزمایش
         test_y = self.test_df['shares'].values.astype(np.int64, casting='unsafe')  # استخراج هدف مجموعه آزمایش
         self.tree = self.build_tree(test_X, test_y)  # ساخت درخت تصمیم
         self.tree = self.prune_tree(self.tree)  # هرس کردن درخت
 
     def evaluate_tree(self):  # متد برای ارزیابی درخت تصمیم
-        """Evaluate the decision tree on the test data."""  # توضیح مستند برای متد
+        """Evaluate the decision tree on the test data."""
         test_X = self.test_df[self.feature_columns].values.astype(np.int64, casting='unsafe')  # استخراج ویژگی‌های آزمایش
         test_y = self.test_df['shares'].values.astype(np.int64, casting='unsafe')  # استخراج هدف آزمایش
         predictions = self.predict(test_X)  # پیش‌بینی برای مجموعه آزمایش
         accuracy = np.mean(predictions == test_y)  # محاسبه دقت پیش‌بینی‌ها
 
     def visualize_tree(self):  # متد برای نمایش متنی درخت تصمیم
-        """Print an enhanced text-based representation of the decision tree."""  # توضیح مستند برای متد
+        """Print an enhanced text-based representation of the decision tree."""
         def print_node(node, depth=0, prefix="", is_last=True):  # تابع داخلی برای چاپ بازگشتی گره‌ها
-            """Recursively print the tree with enhanced formatting."""  # توضیح مستند برای تابع
-            indent = "|  " * (depth - 1) + ("|-- " if depth > 0 else "")  # ایجاد فرمت فاصله برای چاپ
-            if is_last and depth > 0:  # اگر گره آخرین فرزند در عمق باشد
+            """Recursively print the tree with enhanced formatting."""
+            indent = "|  " * (depth - 1) + ("|-- " if depth > 0 else "")  # the characters to indent the tree structure
+            if is_last and depth > 0:
                 indent = "|  " * (depth - 1) + "`-- "  # استفاده از فرمت متفاوت برای آخرین گره
             
             if node.label is not None:  # اگر گره برگ است
@@ -347,13 +349,13 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         print_node(self.tree)  # شروع چاپ درخت از گره ریشه
 
     def visualize_tree_graphviz(self):  # متد برای نمایش گرافیکی درخت با گرافویز
-        """Generate a Graphviz-based visualization of the decision tree and save as PNG."""  # توضیح مستند برای متد
+        """Generate a Graphviz-based visualization of the decision tree and save as PNG."""
         def add_node_to_graph(graph, node, node_id, parent_id=None, edge_label=None):  # تابع داخلی برای اضافه کردن گره‌ها به گراف
-            """Recursively add nodes and edges to the Graphviz graph."""  # توضیح مستند برای تابع
-            if node.label is not None:  # اگر گره برگ است
+            """Recursively add nodes and edges to the Graphviz graph."""
+            if node.label is not None:  # if node is leaf
                 # Leaf node
                 label = f"Class: {node.label}\\nGini: {node.gini:.4f}\\nSamples: {node.n_samples}"  # برچسب گره برگ
-                node_color = "lightgreen" if node.label == 0 else "lightcoral"  # رنگ سبز برای کلاس 0، مرجانی برای کلاس 1
+                node_color = "lightgreen" if node.label == 0 else "lightcoral"  # lightgreen for class 0, lightcoral for class 1 (class 0 means not popular, class 1 means popular)
             else:  # اگر گره تصمیم است
                 # Decision node
                 feature_name = self.feature_columns[node.feature_idx]  # نام ویژگی
@@ -365,9 +367,9 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
             graph.add_node(dot_node)  # اضافه کردن گره به گراف
 
             # Add edge from parent if applicable
-            if parent_id is not None:  # اگر گره والد وجود دارد
-                edge = pydot.Edge(parent_id, node_id, label=edge_label)  # ایجاد یال با برچسب
-                graph.add_edge(edge)  # اضافه کردن یال به گراف
+            if parent_id is not None:  # if parent node exists
+                edge = pydot.Edge(parent_id, node_id, label=edge_label)  # add edge or label
+                graph.add_edge(edge)  # add edge to the graph
 
             # Recursively add children
             if node.left is not None:  # اگر فرزند چپ وجود دارد
@@ -381,14 +383,14 @@ class NewsPopularityProcessor:  # تعریف کلاس اصلی برای پردا
         graph = pydot.Dot(graph_type='digraph', rankdir='TB')  # ایجاد گراف گرافویز با جهت بالا به پایین
         add_node_to_graph(graph, self.tree, "root")  # اضافه کردن گره‌های درخت از ریشه
         
-        # Save as PNG
+        # Save grapgh as PNG
         try:  # شروع بلوک مدیریت خطا
             graph.write_png("decision_tree.png")  # ذخیره گراف به صورت فایل PNG
         except Exception as e:  # در صورت خطا
             raise RuntimeError(f"Error saving Graphviz tree as PNG: {e}")  # پرتاب خطا با پیام
 
-    def run(self):  # متد برای اجرای کل فرآیند
-        """Execute all processing steps, train/evaluate decision tree, and visualize it."""  # توضیح مستند برای متد
+    def run(self):  # متد ران کردن داستان
+        """Execute all processing steps, train/evaluate decision tree, and visualize it."""
         self.load_data()  # بارگذاری داده‌ها
         self.preprocess_data()  # پیش‌پردازش داده‌ها
         self.generate_synthetic_data()  # تولید داده‌های مصنوعی
